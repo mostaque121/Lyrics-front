@@ -112,6 +112,7 @@ router.post('/avatar', ensureAuthenticated, uploadAvatar.single('avatar'), async
       httpOnly: true,
       secure: true, // Set to true in production
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+       sameSite: 'none',
     });
 
     // Destroy session after setting the cookie
@@ -149,6 +150,7 @@ router.post('/skip', ensureAuthenticated, (req, res) => {
     httpOnly: true,
     secure: true, // Set to true in production
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        sameSite: 'none',
   });
 
   // Destroy the session after setting the cookie
