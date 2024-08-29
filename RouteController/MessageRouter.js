@@ -49,9 +49,6 @@ router.get('/users',Middleware, async (req, res) => {
     const users = await User.find({ _id: { $ne: currentUserId } })
       .sort({ lastActive: -1 })
       .select('lastActive isOnline userName _id avatar');
-    if (!users) {
-      return res.status(404).json({ message: 'No users found' });
-    }
     res.status(200).json(users);
   } catch (error) {
     res.status(500).json({ error: 'Server error', details: error.message });
