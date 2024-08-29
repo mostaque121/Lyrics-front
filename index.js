@@ -4,6 +4,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
+const FileStore = require('session-file-store')(session);
 const cors = require('cors');
 const http = require('http');
 require('dotenv').config();
@@ -44,6 +45,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
 app.use(session({
+  store: new FileStore(),
   secret: process.env.SESSION_SECRET || 'your_secret_key',
   resave: false,
   saveUninitialized: true,
