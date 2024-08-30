@@ -10,7 +10,7 @@ const {uploadAvatar} = require('../Config/multerConfig')
 
 
 // Route for user registration and sending OTP
-router.post('/', validateUser, handleValidationErrors, sendOtpToUser, async (req, res) => {
+router.post('/', validateUser, handleValidationErrors, sendOtpToUserTemp, async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash(req.body.password, 10);
     const user = {
@@ -31,7 +31,8 @@ router.post('/', validateUser, handleValidationErrors, sendOtpToUser, async (req
 router.post('/verify', validateOtp, async (req, res) => {
   try {
     const userSession = req.session.user;
-
+    console.log(userSession);
+    console.log(req.session);
     if (!userSession) {
       return res.status(401).json({ error: 'User not found.' });
     }
