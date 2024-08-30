@@ -9,7 +9,7 @@ const User = require('../Models/Users')
 const {uploadAvatar} = require('../Config/multerConfig')
 
 
-router.post('/', validateUser, handleValidationErrors, sendOtpToUserTemp, async (req, res) => {
+router.post('/', validateUser, handleValidationErrors, sendOtpToUser, async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash(req.body.password, 10);
     const user = {
