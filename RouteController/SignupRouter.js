@@ -9,7 +9,6 @@ const User = require('../Models/Users')
 const {uploadAvatar} = require('../Config/multerConfig')
 
 
-// Route for user registration and sending OTP
 router.post('/', validateUser, handleValidationErrors, sendOtpToUserTemp, async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash(req.body.password, 10);
@@ -18,11 +17,13 @@ router.post('/', validateUser, handleValidationErrors, sendOtpToUserTemp, async 
       email: req.body.email,
       password: hashedPassword,
     };
-      res.cookie('logingUser', user, {
+    
+    // Store user information in a cookie
+    res.cookie('userSession', JSON.stringify(user), {
       httpOnly: true,
       secure: true, 
       maxAge: 15 * 60 * 1000,
-       sameSite: 'none',
+      sameSite: 'none',
     });
     
     res.json({ message: 'OTP sent to your email.', user });
@@ -32,56 +33,65 @@ router.post('/', validateUser, handleValidationErrors, sendOtpToUserTemp, async 
   }
 });
 
-
 // Route for OTP verification and saving the user in the database
 router.post('/verify', validateOtp, async (req, res) => {
   try {
-    const userSession = req.cookies.logingUser;
+    const userSession = req.cookies.userSession;
     if (!userSession) {
       return res.status(401).json({ error: 'User not found.' });
     }
 
-    const userData = {
-      ...userSession, 
-      lastActive: Date.now() 
-    };
-
-    // Create and save the new user
-    const newUser = new User(userData);
+    const userData = JSON.parse(userSession);
+    const newUser = new User({ ...userData, lastActive: Date.now() });
     await newUser.save();
 
-    // Store the user's ID and authenticated status in the session
-    req.cookies.logingUser = {
-      _id: newUser._id,
+    // Create and set JWT token
+    const loggedInUser = {
+      user_id: newUser._id,
       userName: newUser.userName,
       email: newUser.email,
       avatar: newUser.avatar,
-      userType:newUser.userType,
+      userType: newUser.userType,
       authenticated: true,
     };
+    
+    const token = jwt.sign(loggedInUser, JWT_SECRET, { expiresIn: '30d' });
 
-    res.status(200).json({ message: 'User verified and saved successfully.', user: req.session.user });
+    res.cookie('loggedInUser', token, {
+      httpOnly: true,
+      secure: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      sameSite: 'none',
+    });
+
+    // Clear the userSession cookie
+    res.clearCookie('userSession', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+    });
+
+    res.status(200).json({ message: 'User verified and saved successfully.' });
   } catch (err) {
     console.error('Error saving user after OTP verification:', err);
     res.status(500).json({ error: 'An error occurred while processing your request.' });
   }
 });
 
-
 // Middleware to check if the user is authenticated
 const ensureAuthenticated = (req, res, next) => {
-  const user = req.cookies.logingUser;
+  const user = req.cookies.loggedInUser;
   if (!user) {
     return res.status(401).json({ error: 'User not found.' });
   }
-  if (user.authenticated) {
-    req.user = user;
+  
+  try {
+    req.user = jwt.verify(user, JWT_SECRET);
     next();
-  } else {
-    return res.status(401).json({ error: 'User not authenticated.' });
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid or expired token.' });
   }
 };
-
 
 // Route for avatar upload
 router.post('/avatar', ensureAuthenticated, uploadAvatar.single('avatar'), async (req, res) => {
@@ -94,7 +104,7 @@ router.post('/avatar', ensureAuthenticated, uploadAvatar.single('avatar'), async
   try {
     const updatedUser = await User.findByIdAndUpdate(
       user._id,
-      { avatar: req.file.path,imageName: req.file.filename },
+      { avatar: req.file.path, imageName: req.file.filename },
       { new: true }
     );
 
@@ -114,20 +124,20 @@ router.post('/avatar', ensureAuthenticated, uploadAvatar.single('avatar'), async
 
     const token = jwt.sign(loggedInUser, JWT_SECRET, { expiresIn: '30d' });
 
-    // Set the JWT token as a cookie
     res.cookie('loggedInUser', token, {
       httpOnly: true,
-      secure: true, // Set to true in production
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-       sameSite: 'none',
+      secure: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      sameSite: 'none',
     });
 
-    // Destroy session after setting the cookie
-    res.clearCookie('logingUser', {
-    httpOnly: true,
-    secure: true, 
-    sameSite: 'none',
-  });
+    res.clearCookie('userSession', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+    });
+
+    res.json({ message: 'Avatar updated successfully.' });
 
   } catch (error) {
     console.error('Error updating avatar:', error);
@@ -135,8 +145,7 @@ router.post('/avatar', ensureAuthenticated, uploadAvatar.single('avatar'), async
   }
 });
 
-
-// Route for skip avatar upload
+// Route for skipping avatar upload
 router.post('/skip', ensureAuthenticated, (req, res) => {
   const user = req.user;
 
@@ -145,7 +154,7 @@ router.post('/skip', ensureAuthenticated, (req, res) => {
     user_id: user._id,
     userName: user.userName,
     email: user.email,
-    userType:user.userType,
+    userType: user.userType,
   };
 
   // Generate the JWT token
@@ -154,21 +163,20 @@ router.post('/skip', ensureAuthenticated, (req, res) => {
   // Set the JWT token as an HTTP-only cookie
   res.cookie('loggedInUser', token, {
     httpOnly: true,
-    secure: true, // Set to true in production
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        sameSite: 'none',
-  });
-
-  // Destroy the tempcookie after setting the cookie
-    res.clearCookie('logingUser', {
-    httpOnly: true,
-    secure: true, 
+    secure: true,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
     sameSite: 'none',
   });
-    // Send success response after session is destroyed
-    res.json({ message: 'Session deleted successfully and user logged in with JWT.' });
-});
 
+  // Clear the userSession cookie
+  res.clearCookie('userSession', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+  });
+
+  res.json({ message: 'Session deleted successfully and user logged in with JWT.' });
+});
 
 
 
