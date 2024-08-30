@@ -18,7 +18,13 @@ router.post('/', validateUser, handleValidationErrors, sendOtpToUserTemp, async 
       email: req.body.email,
       password: hashedPassword,
     };
-    req.session.user = user;
+      res.cookie('logingUser', user, {
+      httpOnly: true,
+      secure: true, 
+      maxAge: 15 * 60 * 1000,
+       sameSite: 'none',
+    });
+    
     res.json({ message: 'OTP sent to your email.', user });
   } catch (error) {
     console.error('Error during registration:', error);
@@ -30,9 +36,7 @@ router.post('/', validateUser, handleValidationErrors, sendOtpToUserTemp, async 
 // Route for OTP verification and saving the user in the database
 router.post('/verify', validateOtp, async (req, res) => {
   try {
-    const userSession = req.session.user;
-    console.log(userSession);
-    console.log(req.session);
+    const userSession = req.cookies.logingUser;
     if (!userSession) {
       return res.status(401).json({ error: 'User not found.' });
     }
@@ -47,11 +51,12 @@ router.post('/verify', validateOtp, async (req, res) => {
     await newUser.save();
 
     // Store the user's ID and authenticated status in the session
-    req.session.user = {
+    req.cookies.logingUser = {
       _id: newUser._id,
       userName: newUser.userName,
       email: newUser.email,
       avatar: newUser.avatar,
+      userType:newUser.userType,
       authenticated: true,
     };
 
@@ -65,11 +70,12 @@ router.post('/verify', validateOtp, async (req, res) => {
 
 // Middleware to check if the user is authenticated
 const ensureAuthenticated = (req, res, next) => {
-  const user = req.session.user;
+  const user = req.cookies.logingUser;
   if (!user) {
     return res.status(401).json({ error: 'User not found.' });
   }
   if (user.authenticated) {
+    req.user = user;
     next();
   } else {
     return res.status(401).json({ error: 'User not authenticated.' });
@@ -79,7 +85,7 @@ const ensureAuthenticated = (req, res, next) => {
 
 // Route for avatar upload
 router.post('/avatar', ensureAuthenticated, uploadAvatar.single('avatar'), async (req, res) => {
-  const user = req.session.user;
+  const user = req.user;
 
   if (!req.file) {
     return res.status(400).json({ error: 'No avatar file uploaded.' });
@@ -117,13 +123,11 @@ router.post('/avatar', ensureAuthenticated, uploadAvatar.single('avatar'), async
     });
 
     // Destroy session after setting the cookie
-    req.session.destroy((err) => {
-      if (err) {
-        return res.status(500).json({ error: 'Could not delete session.' });
-      }
-
-      res.json({ message: 'Avatar updated successfully.', user: loggedInUser });
-    });
+    res.clearCookie('logingUser', {
+    httpOnly: true,
+    secure: true, 
+    sameSite: 'none',
+  });
 
   } catch (error) {
     console.error('Error updating avatar:', error);
@@ -134,13 +138,14 @@ router.post('/avatar', ensureAuthenticated, uploadAvatar.single('avatar'), async
 
 // Route for skip avatar upload
 router.post('/skip', ensureAuthenticated, (req, res) => {
-  const user = req.session.user;
+  const user = req.user;
 
   // Create the payload for the JWT token
   const loggedInUser = {
     user_id: user._id,
     userName: user.userName,
     email: user.email,
+    userType:user.userType,
   };
 
   // Generate the JWT token
@@ -154,16 +159,14 @@ router.post('/skip', ensureAuthenticated, (req, res) => {
         sameSite: 'none',
   });
 
-  // Destroy the session after setting the cookie
-  req.session.destroy((err) => {
-    if (err) {
-      console.error('Error destroying session:', err);
-      return res.status(500).json({ error: 'Could not delete session' });
-    }
-
+  // Destroy the tempcookie after setting the cookie
+    res.clearCookie('logingUser', {
+    httpOnly: true,
+    secure: true, 
+    sameSite: 'none',
+  });
     // Send success response after session is destroyed
     res.json({ message: 'Session deleted successfully and user logged in with JWT.' });
-  });
 });
 
 
